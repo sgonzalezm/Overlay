@@ -112,33 +112,39 @@ def iniciar_empalme():
 
         hsv_personaje = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HSV)
 
-        lower_green = np.array([35, 80, 80])
+        # Ajuste de los valores del verde (más amplio para asegurar buena detección)
+        lower_green = np.array([35, 68, 68])
         upper_green = np.array([85, 255, 255])
 
+        # Crear la máscara para el color verde
         mask = cv2.inRange(hsv_personaje, lower_green, upper_green)
 
-        # Aplicar un filtro bilateral para suavizar los bordes sin perder detalles
-        frame_personaje = cv2.bilateralFilter(frame_personaje, 9, 75, 75)
-
+        # Aplicar erosión y dilatación para limpiar la máscara
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.erode(mask, kernel, iterations=1)
-        mask = cv2.dilate(mask, kernel, iterations=2)
+        mask = cv2.dilate(mask, kernel, iterations=1)
 
-        mask = cv2.GaussianBlur(mask, (15, 15), 0)
-
-        hls = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HLS)
-
+        # Invertir la máscara para obtener la parte del personaje sin fondo verde
         mask_inv = cv2.bitwise_not(mask)
-        hls[:, :, 2] = np.where(mask_inv == 0, hls[:, :, 2] * 0.2, hls[:, :, 2])
 
-        frame_personaje = cv2.cvtColor(hls, cv2.COLOR_HLS2BGR)
-
+        # Separar el personaje del fondo verde
         personaje_sin_fondo = cv2.bitwise_and(frame_personaje, frame_personaje, mask=mask_inv)
+
+        # Técnica de "despillage": eliminar restos verdes suavizando y desaturando
+        hls = cv2.cvtColor(personaje_sin_fondo, cv2.COLOR_BGR2HLS)
+        hls[:, :, 2] = np.where(mask == 0, hls[:, :, 2] * 0.5, hls[:, :, 2])  # Reducir brillo en áreas verdes
+        hls[:, :, 1] = np.where(mask == 0, hls[:, :, 1] * 0.7, hls[:, :, 1])  # Reducir la luminancia para minimizar spill
+        personaje_sin_fondo = cv2.cvtColor(hls, cv2.COLOR_HLS2BGR)
+
+        # Extraer el fondo de la cámara en las áreas donde el personaje no está
         fondo_camara = cv2.bitwise_and(frame, frame, mask=mask)
 
+        # Combinar el fondo de la cámara con el personaje
         resultado = cv2.add(fondo_camara, personaje_sin_fondo)
 
+        # Mostrar el resultado final en la ventana de Tkinter
         mostrar_frame(resultado)
+
         ventana_empalme.after(10, actualizar_video)
 
     ventana_empalme.after(10, actualizar_video)
