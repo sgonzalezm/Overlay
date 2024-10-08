@@ -5,7 +5,8 @@ from PIL import Image, ImageTk
 import os
 import time
 
-STOCK_FOLDER = 'C:/Users/diego/Desktop/Video Overlay/video_stock/'
+#STOCK_FOLDER = 'C:/Users/diego/Desktop/Video Overlay/video_stock/'
+STOCK_FOLDER = 'C:/video_stock/'
 
 # Función para guardar la imagen capturada
 def guardar_foto(frame):
@@ -81,6 +82,9 @@ def iniciar_empalme():
     # Captura de video en tiempo real de la cámara
     cap = cv2.VideoCapture(0)
 
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     if not cap.isOpened():
         print("Error: No se pudo acceder a la cámara.")
         return
@@ -125,14 +129,33 @@ def iniciar_empalme():
         hsv_personaje = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HSV)
 
         # Definir el rango de color verde en HSV
-        lower_green = np.array([35, 100, 100])
-        upper_green = np.array([85, 255, 255])
+        lower_green = np.array([20, 100, 100])
+        upper_green = np.array([100, 255, 255])
+
+        #lower_green = np.array([35, 100, 100])
+        #upper_green = np.array([85, 255, 255])
 
         # Crear una máscara para el color verde
         mask = cv2.inRange(hsv_personaje, lower_green, upper_green)
 
         # Invertir la máscara para obtener el personaje sin el fondo verde
         mask_inv = cv2.bitwise_not(mask)
+
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.erode(mask, kernel, iterations=1)  # Erosiona para reducir el resplandor
+        mask = cv2.dilate(mask, kernel, iterations=1)  # Dilata para restaurar tamaño
+
+        mask_blur = cv2.GaussianBlur(mask, (5, 5), 0)
+
+        # Convertir la imagen a espacio HLS
+        hls = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HLS)
+
+        # Reducir la saturación en los píxeles donde haya verde derramado
+        mask_inv = cv2.bitwise_not(mask)  # Invertir la máscara del chroma key
+        hls[:, :, 2] = np.where(mask_inv == 0, hls[:, :, 2] * 0.5, hls[:, :, 2])
+
+        # Convertir de nuevo a BGR
+        frame_personaje = cv2.cvtColor(hls, cv2.COLOR_HLS2BGR)
 
         # Extraer el personaje sin fondo
         personaje_sin_fondo = cv2.bitwise_and(frame_personaje, frame_personaje, mask=mask_inv)
