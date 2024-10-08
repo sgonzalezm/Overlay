@@ -5,7 +5,6 @@ from PIL import Image, ImageTk
 import os
 import time
 
-#STOCK_FOLDER = 'C:/Users/diego/Desktop/Video Overlay/video_stock/'
 STOCK_FOLDER = 'C:/video_stock/'
 
 # Función para guardar la imagen capturada
@@ -23,14 +22,11 @@ def capturar():
 
 # Función para mostrar el frame en la ventana de Tkinter
 def mostrar_frame(frame):
-    # Convertir de BGR a RGB para Pillow
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    img = Image.fromarray(frame)  # Convertir a imagen de Pillow
-    imgtk = ImageTk.PhotoImage(image=img)  # Convertir la imagen a formato de Tkinter
-
-    # Mantener la referencia en la etiqueta del video
-    video_label.imgtk = imgtk  # Guardar la referencia en el widget de video
-    video_label.config(image=imgtk)  # Actualizar el widget con la nueva imagen
+    img = Image.fromarray(frame)
+    imgtk = ImageTk.PhotoImage(image=img)
+    video_label.imgtk = imgtk
+    video_label.config(image=imgtk)
 
 # Función para manejar la selección del video y proceder al empalme
 def seleccionar_video():
@@ -39,8 +35,8 @@ def seleccionar_video():
     if seleccion:
         video_seleccionado = lista_videos.get(seleccion)
         print(f"Video seleccionado: {video_seleccionado}")
-        ventana_seleccion.withdraw()  # Ocultar ventana de selección
-        iniciar_empalme()  # Llamar al empalme
+        ventana_seleccion.withdraw()
+        iniciar_empalme()
 
 # Ventana de selección de video
 def ventana_seleccion_videos():
@@ -55,7 +51,6 @@ def ventana_seleccion_videos():
     lista_videos = tk.Listbox(ventana_seleccion)
     lista_videos.pack()
 
-    # Cargar los videos de la carpeta
     videos = os.listdir(STOCK_FOLDER)
     for video in videos:
         lista_videos.insert(tk.END, video)
@@ -69,8 +64,7 @@ def ventana_seleccion_videos():
 def iniciar_empalme():
     global resultado, cap, personaje, video_label, ventana_empalme
 
-    # Ventana para la superposición de videos
-    ventana_empalme = tk.Toplevel()  # Crear una nueva ventana en lugar de Tk
+    ventana_empalme = tk.Toplevel()
     ventana_empalme.title("Superposición de video y cámara")
 
     video_label = tk.Label(ventana_empalme)
@@ -79,9 +73,7 @@ def iniciar_empalme():
     button = tk.Button(ventana_empalme, text="Capturar foto", command=capturar)
     button.pack()
 
-    # Captura de video en tiempo real de la cámara
     cap = cv2.VideoCapture(0)
-
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
@@ -89,7 +81,6 @@ def iniciar_empalme():
         print("Error: No se pudo acceder a la cámara.")
         return
 
-    # Cargar el video del personaje (video seleccionado de stock)
     video_path = os.path.join(STOCK_FOLDER, video_seleccionado)
     personaje = cv2.VideoCapture(video_path)
 
@@ -97,23 +88,18 @@ def iniciar_empalme():
         print("Error: No se pudo cargar el video del personaje.")
         return
 
-    resultado = None  # Para almacenar el frame actual para la captura
+    resultado = None
 
     def actualizar_video():
         global resultado
-        # Leer el frame de la cámara
         ret, frame = cap.read()
-
         if not ret:
             print("Error al leer el frame de la cámara.")
             ventana_empalme.after(10, actualizar_video)
             return
 
-        # Leer el frame del video del personaje
         ret_personaje, frame_personaje = personaje.read()
-
         if not ret_personaje:
-            # Reiniciar el video del personaje si llega al final
             personaje.set(cv2.CAP_PROP_POS_FRAMES, 0)
             ret_personaje, frame_personaje = personaje.read()
 
@@ -122,66 +108,43 @@ def iniciar_empalme():
             ventana_empalme.after(10, actualizar_video)
             return
 
-        # Redimensionar el frame del personaje al tamaño del frame de la cámara
         frame_personaje = cv2.resize(frame_personaje, (frame.shape[1], frame.shape[0]))
 
-        # Convertir el frame del personaje a HSV
         hsv_personaje = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HSV)
 
-        # Definir el rango de color verde en HSV
-        lower_green = np.array([20, 100, 100])
-        upper_green = np.array([100, 255, 255])
+        lower_green = np.array([35, 80, 80])
+        upper_green = np.array([85, 255, 255])
 
-        #lower_green = np.array([35, 100, 100])
-        #upper_green = np.array([85, 255, 255])
-
-        # Crear una máscara para el color verde
         mask = cv2.inRange(hsv_personaje, lower_green, upper_green)
 
-        # Invertir la máscara para obtener el personaje sin el fondo verde
-        mask_inv = cv2.bitwise_not(mask)
+        # Aplicar un filtro bilateral para suavizar los bordes sin perder detalles
+        frame_personaje = cv2.bilateralFilter(frame_personaje, 9, 75, 75)
 
         kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.erode(mask, kernel, iterations=1)  # Erosiona para reducir el resplandor
-        mask = cv2.dilate(mask, kernel, iterations=1)  # Dilata para restaurar tamaño
+        mask = cv2.erode(mask, kernel, iterations=1)
+        mask = cv2.dilate(mask, kernel, iterations=2)
 
-        mask_blur = cv2.GaussianBlur(mask, (5, 5), 0)
+        mask = cv2.GaussianBlur(mask, (15, 15), 0)
 
-        # Convertir la imagen a espacio HLS
         hls = cv2.cvtColor(frame_personaje, cv2.COLOR_BGR2HLS)
 
-        # Reducir la saturación en los píxeles donde haya verde derramado
-        mask_inv = cv2.bitwise_not(mask)  # Invertir la máscara del chroma key
-        hls[:, :, 2] = np.where(mask_inv == 0, hls[:, :, 2] * 0.5, hls[:, :, 2])
+        mask_inv = cv2.bitwise_not(mask)
+        hls[:, :, 2] = np.where(mask_inv == 0, hls[:, :, 2] * 0.2, hls[:, :, 2])
 
-        # Convertir de nuevo a BGR
         frame_personaje = cv2.cvtColor(hls, cv2.COLOR_HLS2BGR)
 
-        # Extraer el personaje sin fondo
         personaje_sin_fondo = cv2.bitwise_and(frame_personaje, frame_personaje, mask=mask_inv)
-
-        # Extraer el fondo de la imagen de la cámara donde estará el personaje
         fondo_camara = cv2.bitwise_and(frame, frame, mask=mask)
 
-        # Combinar el personaje con la imagen de la cámara
         resultado = cv2.add(fondo_camara, personaje_sin_fondo)
 
-        # Mostrar el frame en la ventana de Tkinter
         mostrar_frame(resultado)
-
-        # Llamar a la función otra vez después de 10 ms
         ventana_empalme.after(10, actualizar_video)
 
-    # Iniciar la actualización del video
     ventana_empalme.after(10, actualizar_video)
-
-    # Ejecutar la ventana de superposición
     ventana_empalme.mainloop()
 
-    # Liberar la cámara y los videos al final
     cap.release()
     personaje.release()
 
-# Iniciar la ventana de selección de videos
 ventana_seleccion_videos()
-
